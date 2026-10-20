@@ -43,6 +43,8 @@ final class Epg {
     private static final long REFRESH_MS = 5 * 60 * 1000L;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static Map<String, Programme[]> now = Collections.emptyMap();
+    /** JioTV channels' guides, fetched from JioTV per channel as they're watched. */
+    private static final Map<String, Programme[]> jio = new HashMap<>();
     private static long fetchedAt;
     private static boolean fetching;
 
@@ -50,7 +52,7 @@ final class Epg {
 
     /** Current programme for the channel, or null. */
     static Programme current(String key) {
-        Programme[] p = now.get(key);
+        Programme[] p = programmes(key);
         if (p == null) return null;
         long t = System.currentTimeMillis();
         for (Programme x : p) if (x.start <= t && t < x.end) return x;
@@ -59,7 +61,7 @@ final class Epg {
 
     /** The programme after the current one, or null. */
     static Programme next(String key) {
-        Programme[] p = now.get(key);
+        Programme[] p = programmes(key);
         if (p == null) return null;
         long t = System.currentTimeMillis();
         for (Programme x : p) if (x.start > t) return x;
@@ -76,6 +78,28 @@ final class Epg {
         if (fetching) return;
         fetchedAt = 0;
         refresh(onChange);
+    }
+
+    private static Programme[] programmes(String key) {
+        Programme[] p = now.get(key);
+        return p != null ? p : jio.get(key);
+    }
+
+    /** Fetches a JioTV channel's guide unless what we have still covers now; then runs {@code onLoaded}. */
+    static void loadJio(Channel c, Runnable onLoaded) {
+        Programme[] have = jio.get(c.key);
+        long t = System.currentTimeMillis();
+        if (have != null && have.length > 0 && have[have.length - 1].end > t + 3_600_000L) return;
+        String id = Jio.channelId(c);
+        Net.IO.execute(() -> {
+            List<Programme> list = Jio.guide(id);
+            if (list.isEmpty()) return;
+            Programme[] arr = list.toArray(new Programme[0]);
+            MAIN.post(() -> {
+                jio.put(c.key, arr);
+                if (onLoaded != null) onLoaded.run();
+            });
+        });
     }
 
     /** Refreshes now/next if stale; {@code onChange} runs on the main thread when new data arrives. */
@@ -111,6 +135,13 @@ final class Epg {
     static void schedule(String key, Callback<List<Programme>> cb) {
         Net.IO.execute(() -> {
             List<Programme> list = Collections.emptyList();
+            if (key.startsWith(Jio.SCHEME)) {
+                long t = System.currentTimeMillis();
+                List<Programme> upcoming = new ArrayList<>();
+                for (Programme p : Jio.guide(key.substring(Jio.SCHEME.length()))) if (p.end > t) upcoming.add(p);
+                MAIN.post(() -> cb.done(upcoming));
+                return;
+            }
             try {
                 JSONObject o = new JSONObject(text(Net.SERVER + "/epg/" + Uri.encode(key) + ".json", 1 << 20));
                 list = programmes(o.getJSONArray("programmes"));

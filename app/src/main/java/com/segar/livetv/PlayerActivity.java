@@ -34,6 +34,8 @@ import androidx.media3.common.Tracks;
 import androidx.media3.common.VideoSize;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.datasource.ResolvingDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -76,6 +78,12 @@ public class PlayerActivity extends Activity {
     private int previous = -1;
     private int pendingNumber;
     private VideoSize videoSize = VideoSize.UNKNOWN;
+    /** Bumped on every startPlayback(); async JioTV lookups for an older one are dropped. */
+    private int playId;
+    /** The playing JioTV channel's stream token, sent as the __hdnea__ cookie; renewed in place. */
+    private volatile String jioToken;
+    private boolean jioRetried;
+    private final Runnable renewJio = this::renewJioToken;
 
     private final Runnable hideInfo = () -> info.setVisibility(View.GONE);
     private final Runnable startPlayback = this::startPlayback;
@@ -87,6 +95,7 @@ public class PlayerActivity extends Activity {
         super.onCreate(state);
         Ui.init(this);
         Prefs.init(this);
+        Jio.init(this);
         ImageLoader.init(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF000000));
@@ -187,6 +196,19 @@ public class PlayerActivity extends Activity {
                     player.prepare();
                     return;
                 }
+                // JioTV token rejected: fetch a fresh link once before giving up.
+                if (!jioRetried && index >= 0 && Jio.isJio(channels.get(index))
+                        && e.getCause() instanceof HttpDataSource.InvalidResponseCodeException) {
+                    HttpDataSource.InvalidResponseCodeException bad = (HttpDataSource.InvalidResponseCodeException) e.getCause();
+                    int code = bad.responseCode;
+                    android.util.Log.w("JioPlay", code + " on " + bad.dataSpec.uri.getHost() + bad.dataSpec.uri.getPath()
+                            + " query=" + (bad.dataSpec.uri.getQuery() != null) + " cookie=" + bad.dataSpec.httpRequestHeaders.containsKey("Cookie"));
+                    if (code == 401 || code == 403) {
+                        jioRetried = true;
+                        startPlayback();
+                        return;
+                    }
+                }
                 showStatus(Strings.UNAVAILABLE, Strings.CHANGE_HINT);
             }
 
@@ -207,6 +229,7 @@ public class PlayerActivity extends Activity {
 
     private void releasePlayer() {
         handler.removeCallbacks(startPlayback);
+        handler.removeCallbacks(renewJio);
         handler.removeCallbacks(showTuning);
         if (spinner != null) hideSpinner();
         if (player != null) {
@@ -218,6 +241,12 @@ public class PlayerActivity extends Activity {
     private void startPlayback() {
         if (player == null || index < 0) return;
         Channel c = channels.get(index);
+        int id = ++playId;
+        handler.removeCallbacks(renewJio);
+        if (Jio.isJio(c)) {
+            startJio(c, id);
+            return;
+        }
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(c.userAgent != null ? c.userAgent : Net.UA)
                 .setAllowCrossProtocolRedirects(true)
@@ -243,6 +272,68 @@ public class PlayerActivity extends Activity {
         player.setPlayWhenReady(true);
     }
 
+    /** JioTV: get a fresh stream link off the main thread, then play it with JioTV's headers. */
+    private void startJio(Channel c, int id) {
+        String channelId = Jio.channelId(c);
+        handler.postDelayed(showTuning, 700);
+        Net.IO.execute(() -> {
+            Jio.Stream s = Jio.resolve(channelId);
+            handler.post(() -> {
+                if (id != playId || player == null) return; // zapped away meanwhile
+                if (s.error != null) {
+                    handler.removeCallbacks(showTuning);
+                    showStatus(s.error, Strings.CHANGE_HINT);
+                    return;
+                }
+                jioToken = s.hdnea;
+                scheduleJioRenew(s.expires);
+                Map<String, String> headers = Jio.tvHeaders(channelId);
+                headers.remove("User-Agent");
+                DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+                        .setUserAgent(Jio.PLAYER_UA)
+                        .setAllowCrossProtocolRedirects(true)
+                        .setConnectTimeoutMs(8000)
+                        .setReadTimeoutMs(10000)
+                        .setDefaultRequestProperties(headers);
+                // Each playlist, segment and key request carries the current token as a cookie.
+                ResolvingDataSource.Factory data = new ResolvingDataSource.Factory(http, spec -> {
+                    String cookie = Jio.cookieFor(spec.uri.toString(), jioToken);
+                    return cookie.isEmpty() ? spec : spec.withAdditionalHeaders(Collections.singletonMap("Cookie", cookie));
+                });
+                MediaItem item = new MediaItem.Builder().setUri(s.url).setMimeType(MimeTypes.APPLICATION_M3U8).build();
+                player.setMediaSource(new HlsMediaSource.Factory(data)
+                        .setAllowChunklessPreparation(false)
+                        .createMediaSource(item));
+                player.prepare();
+                player.setPlayWhenReady(true);
+            });
+        });
+    }
+
+    /** Fetches a new JioTV token two minutes before the current one expires. */
+    private void scheduleJioRenew(long expires) {
+        handler.removeCallbacks(renewJio);
+        if (expires > 0) handler.postDelayed(renewJio, Math.max(30_000, expires - System.currentTimeMillis() - 120_000));
+    }
+
+    private void renewJioToken() {
+        if (index < 0 || !Jio.isJio(channels.get(index))) return;
+        String channelId = Jio.channelId(channels.get(index));
+        int id = playId;
+        Net.IO.execute(() -> {
+            Jio.Stream s = Jio.resolve(channelId);
+            handler.post(() -> {
+                if (id != playId) return;
+                if (s.hdnea != null) {
+                    jioToken = s.hdnea;
+                    scheduleJioRenew(s.expires);
+                } else {
+                    scheduleJioRenew(System.currentTimeMillis() + 180_000); // try again in a minute
+                }
+            });
+        });
+    }
+
     /** Switches channel now (UI) and starts the stream once the remote has been still briefly. */
     private void tune(int i, boolean debounce) {
         if (channels.isEmpty()) return;
@@ -250,6 +341,8 @@ public class PlayerActivity extends Activity {
         if (i != index && index >= 0) previous = index;
         index = i;
         Prefs.setLast(channels.get(i).key);
+        jioRetried = false;
+        if (Jio.isJio(channels.get(i))) Epg.loadJio(channels.get(i), this::updateInfo);
         hideStatus();
         handler.removeCallbacks(showTuning);
         if (player != null) {

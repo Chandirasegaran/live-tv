@@ -60,6 +60,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         Ui.init(this);
         Prefs.init(this);
+        Jio.init(this);
         ImageLoader.init(this);
         Ui.background(this);
         category = Prefs.lastCategory();
@@ -493,23 +494,13 @@ public class MainActivity extends Activity {
     private interface Setting {
         String value();
         void ok(TextView value);
+        /** Focus left the row (e.g. to cancel a pending confirmation). */
+        default void blur(TextView value) {}
     }
 
     private void openSettings() {
-        closeOverlay();
-        FrameLayout layer = new FrameLayout(this);
-        layer.setBackgroundColor(Ui.SCRIM);
-        FrameLayout panel = new FrameLayout(this);
-        panel.setBackgroundColor(Ui.PANEL_SURFACE);
-        panel.setPadding(px(48), px(92), px(48), px(48));
-        layer.addView(panel, new FrameLayout.LayoutParams(px(640), -1, Gravity.END));
-
-        TextView title = Ui.text(this, 40, Ui.TEXT_PRIMARY, Ui.semibold);
-        title.setText(Strings.SETTINGS);
-        panel.addView(title, Ui.at(0, 0, -1, px(52)));
-
         String[] titles = {Strings.QUALITY, Strings.ASPECT, Strings.ON_START, Strings.UP_BUTTON, Strings.INFO_BAR,
-                Strings.REFRESH_CHANNELS, Strings.REFRESH_GUIDE, Strings.CLEAR_FAVS, Strings.UPDATES, Strings.ABOUT};
+                Strings.JIOTV, Strings.REFRESH_CHANNELS, Strings.REFRESH_GUIDE, Strings.CLEAR_FAVS, Strings.UPDATES, Strings.ABOUT};
         boolean[] armed = {false}; // Clear favourites needs a second OK
         Updater.Release[] update = {null}; // found by the first OK on "Check for updates"
         Setting[] rows = {
@@ -543,6 +534,14 @@ public class MainActivity extends Activity {
                         Prefs.setInfoSeconds(s == 3 ? 5 : s == 5 ? 8 : 3);
                         v.setText(value());
                     }
+                },
+                new Setting() {
+                    public String value() {
+                        return Jio.loggedIn()
+                                ? Strings.JIO_ON + " · " + Jio.maskedNumber() + " · " + Repo.jioCount() + Strings.CHANNELS_COUNT
+                                : Strings.JIO_OFF;
+                    }
+                    public void ok(TextView v) { openJio(); }
                 },
                 new Setting() {
                     public String value() { return Repo.all().size() + Strings.CHANNELS_COUNT; }
@@ -584,6 +583,12 @@ public class MainActivity extends Activity {
                         if (favouritesShown()) showCategory(category, false);
                         else refreshVisible();
                     }
+                    public void blur(TextView v) {
+                        if (armed[0]) { // moving away cancels "Clear favourites"
+                            armed[0] = false;
+                            v.setText(value());
+                        }
+                    }
                 },
                 new Setting() {
                     public String value() { return "Version " + Updater.installedVersion(MainActivity.this); }
@@ -614,6 +619,27 @@ public class MainActivity extends Activity {
                 },
         };
 
+        openPanel(Strings.SETTINGS, titles, rows);
+    }
+
+    /** A right-hand panel (640 wide, over a dim) with a title; returns {layer, content}. */
+    private FrameLayout[] sidePanel(String titleText) {
+        closeOverlay();
+        FrameLayout layer = new FrameLayout(this);
+        layer.setBackgroundColor(Ui.SCRIM);
+        FrameLayout panel = new FrameLayout(this);
+        panel.setBackgroundColor(Ui.PANEL_SURFACE);
+        panel.setPadding(px(48), px(92), px(48), px(48));
+        layer.addView(panel, new FrameLayout.LayoutParams(px(640), -1, Gravity.END));
+        TextView title = Ui.text(this, 40, Ui.TEXT_PRIMARY, Ui.semibold);
+        title.setText(titleText);
+        panel.addView(title, Ui.at(0, 0, -1, px(52)));
+        return new FrameLayout[] {layer, panel};
+    }
+
+    /** A side panel of title/value rows; OK on a row runs its {@link Setting#ok}. */
+    private void openPanel(String titleText, String[] titles, Setting[] rows) {
+        FrameLayout[] p = sidePanel(titleText);
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         View first = null;
@@ -635,10 +661,7 @@ public class MainActivity extends Activity {
             r.setOnFocusChangeListener((v, has) -> {
                 bg.setColor(has ? Ui.GLASS_FOCUS : 0);
                 name.setTextColor(has ? Ui.TEXT_PRIMARY : Ui.TEXT_LIST);
-                if (!has && armed[0] && Strings.CLEAR_FAVS.contentEquals(name.getText())) {
-                    armed[0] = false; // moving away cancels "Clear favourites"
-                    value.setText(row.value());
-                }
+                if (!has) row.blur(value);
             });
             r.setOnClickListener(v -> row.ok(value));
             list.addView(r, new LinearLayout.LayoutParams(-1, px(96)));
@@ -648,10 +671,192 @@ public class MainActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
         scroll.addView(list);
-        panel.addView(scroll, Ui.at(0, px(52 + 36), -1, -1));
+        p[1].addView(scroll, Ui.at(0, px(52 + 36), -1, -1));
+        root.addView(p[0], new FrameLayout.LayoutParams(-1, -1));
+        openOverlay(p[0], first);
+    }
 
-        root.addView(layer, new FrameLayout.LayoutParams(-1, -1));
-        openOverlay(layer, first);
+    // ---- JioTV -------------------------------------------------------------------------------
+
+    private void openJio() {
+        if (!Jio.loggedIn()) {
+            openJioSignIn();
+            return;
+        }
+        boolean[] armed = {false}; // signing out needs a second OK
+        String[] titles = {Strings.JIO_ACCOUNT, Strings.JIO_LANGUAGES, Strings.JIO_REFRESH, Strings.JIO_SIGN_OUT};
+        Setting[] rows = {
+                new Setting() {
+                    public String value() { return Jio.maskedNumber() + " · " + Repo.jioCount() + Strings.CHANNELS_COUNT; }
+                    public void ok(TextView v) { v.setText(value()); }
+                },
+                new Setting() {
+                    public String value() { return Jio.languagesLabel(); }
+                    public void ok(TextView v) { openJioLanguages(); }
+                },
+                new Setting() {
+                    public String value() { return Strings.JIO_REFRESH_HINT; }
+                    public void ok(TextView v) {
+                        v.setText(Strings.WORKING);
+                        Repo.reloadJio(MainActivity.this, n ->
+                                v.setText(n >= 0 ? Strings.DONE + " · " + n + Strings.CHANNELS_COUNT : Strings.FAILED));
+                    }
+                },
+                new Setting() {
+                    public String value() { return Strings.JIO_SIGN_OUT_HINT; }
+                    public void ok(TextView v) {
+                        if (!armed[0]) {
+                            armed[0] = true;
+                            v.setText(Strings.CONFIRM);
+                            return;
+                        }
+                        Jio.logout();
+                        Repo.clearJio(MainActivity.this);
+                        closeOverlay();
+                    }
+                    public void blur(TextView v) {
+                        if (armed[0]) {
+                            armed[0] = false;
+                            v.setText(value());
+                        }
+                    }
+                },
+        };
+        openPanel(Strings.JIOTV, titles, rows);
+    }
+
+    /** Pick JioTV languages; "Save" reloads the JioTV channels with the new choice. */
+    private void openJioLanguages() {
+        java.util.Set<Integer> chosen = Jio.languages();
+        int n = Jio.LANGUAGE_IDS.length;
+        String[] titles = new String[n + 1];
+        Setting[] rows = new Setting[n + 1];
+        titles[0] = Strings.JIO_SAVE;
+        rows[0] = new Setting() {
+            public String value() { return Strings.JIO_SAVE_HINT; }
+            public void ok(TextView v) {
+                if (chosen.isEmpty()) {
+                    v.setText(Strings.JIO_PICK_ONE);
+                    return;
+                }
+                Jio.setLanguages(chosen);
+                v.setText(Strings.WORKING);
+                Repo.reloadJio(MainActivity.this, count -> {
+                    if (count >= 0) openJio();
+                    else v.setText(Strings.FAILED);
+                });
+            }
+        };
+        for (int i = 0; i < n; i++) {
+            int id = Jio.LANGUAGE_IDS[i];
+            titles[i + 1] = Jio.LANGUAGE_NAMES[i];
+            rows[i + 1] = new Setting() {
+                public String value() { return chosen.contains(id) ? Strings.JIO_INCLUDED : Strings.JIO_NOT_INCLUDED; }
+                public void ok(TextView v) {
+                    if (!chosen.remove(id)) chosen.add(id);
+                    v.setText(value());
+                }
+            };
+        }
+        openPanel(Strings.JIO_LANGUAGES, titles, rows);
+    }
+
+    /** Number, then OTP, typed with the remote's on-screen keyboard. */
+    private void openJioSignIn() {
+        FrameLayout[] p = sidePanel(Strings.JIOTV);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        TextView intro = Ui.text(this, 24, Ui.TEXT_SECONDARY, Ui.regular);
+        intro.setSingleLine(false);
+        intro.setText(Strings.JIO_INTRO);
+        col.addView(intro, new LinearLayout.LayoutParams(-1, -2));
+
+        EditText number = jioField(Strings.JIO_NUMBER_HINT, InputType.TYPE_CLASS_PHONE, 10);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, px(80));
+        lp.topMargin = px(28);
+        col.addView(number, lp);
+
+        EditText otp = jioField(Strings.JIO_OTP_HINT, InputType.TYPE_CLASS_NUMBER, 8);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(-1, px(80));
+        lp2.topMargin = px(20);
+        otp.setVisibility(View.GONE);
+        col.addView(otp, lp2);
+
+        TextView status = Ui.text(this, 24, Ui.TEXT_SECONDARY, Ui.regular);
+        status.setSingleLine(false);
+        LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(-1, -2);
+        lp3.topMargin = px(24);
+        col.addView(status, lp3);
+
+        number.setOnEditorActionListener((v, action, e) -> {
+            String n = number.getText().toString().replaceAll("[^0-9]", "");
+            if (n.length() > 10) n = n.substring(n.length() - 10);
+            if (n.length() != 10) {
+                status.setText(Strings.JIO_BAD_NUMBER);
+                return true;
+            }
+            String num = n;
+            status.setText(Strings.JIO_SENDING);
+            Jio.sendOtp(num, err -> {
+                if (err != null) {
+                    status.setText(err);
+                    return;
+                }
+                status.setText(Strings.JIO_OTP_SENT);
+                otp.setVisibility(View.VISIBLE);
+                otp.requestFocus();
+                otp.setTag(num);
+            });
+            return true;
+        });
+        otp.setOnEditorActionListener((v, action, e) -> {
+            String code = otp.getText().toString().trim();
+            if (code.isEmpty() || otp.getTag() == null) return true;
+            hideKeyboard(otp);
+            status.setText(Strings.JIO_VERIFYING);
+            Jio.verifyOtp((String) otp.getTag(), code, err -> {
+                if (err != null) {
+                    status.setText(err);
+                    otp.requestFocus();
+                    return;
+                }
+                status.setText(Strings.JIO_LOADING);
+                Repo.reloadJio(MainActivity.this, n -> {
+                    if (n >= 0) {
+                        status.setText(String.format(Strings.JIO_ADDED, n));
+                        status.postDelayed(this::openJio, 1500);
+                    } else {
+                        status.setText(Strings.JIO_SIGNED_IN_NO_CHANNELS);
+                    }
+                });
+            });
+            return true;
+        });
+
+        p[1].addView(col, Ui.at(0, px(52 + 36), -1, -2));
+        root.addView(p[0], new FrameLayout.LayoutParams(-1, -1));
+        openOverlay(p[0], number);
+        number.post(() -> ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
+                .showSoftInput(number, InputMethodManager.SHOW_IMPLICIT));
+    }
+
+    private EditText jioField(String hint, int inputType, int maxLength) {
+        EditText f = new EditText(this);
+        f.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px(30));
+        f.setTextColor(Ui.TEXT_PRIMARY);
+        f.setHintTextColor(Ui.TEXT_SECONDARY);
+        f.setHint(hint);
+        f.setTypeface(Ui.regular);
+        f.setSingleLine(true);
+        f.setInputType(inputType);
+        f.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(maxLength + 3)});
+        f.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        f.setPadding(px(24), 0, px(24), 0);
+        GradientDrawable bg = Ui.glass(Ui.RADIUS);
+        f.setBackground(bg);
+        f.setOnFocusChangeListener((v, has) -> bg.setColor(has ? Ui.GLASS_FOCUS : Ui.GLASS));
+        return f;
     }
 
     // ---- Overlay plumbing ------------------------------------------------------------------

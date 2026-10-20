@@ -6,6 +6,7 @@ A small, fast Android TV app for watching free Indian and Tamil live TV channels
 - **Remote-first player:** channel up/down, number entry, an info bar with what's on now and next, a channel list (OK), the day's guide (→), and audio-track switching (←) on channels with several languages.
 - **Favourites and search.**
 - **TV guide (EPG)** for about 460 channels, from a small self-hosted server (see [`server/`](server/)).
+- **JioTV (optional):** sign in with your own Jio number in Settings › JioTV to add JioTV channels in your chosen languages to the library, with their guide. See [JioTV](#jiotv) below.
 - **Plays MP2 audio everywhere:** many satellite-sourced sports channels use MP2 (MPEG-1 Layer II) audio, which a lot of TVs can't decode. A small built-in decoder takes over when the TV has none.
 - **Settings:** video quality (highest by default), aspect ratio (16:9 by default, Original or Zoom), start-up behaviour, up-button direction, info bar time, refresh channels or guide, and **Check for updates** from this repository's GitHub Releases.
 - **Light:** about 680 KB. No AndroidX, Kotlin or Compose; plain Java views drawn in code, plus Media3 ExoPlayer for playback.
@@ -21,6 +22,17 @@ All channels come from the community-maintained **[iptv-org/iptv](https://github
 The built-in MP2 audio decoder is ported from [pl_mpeg](https://github.com/phoboslab/pl_mpeg) by Dominic Szablewski (MIT), itself based on [kjmp2](https://keyj.emphy.de/kjmp2/) by Martin J. Fiedler.
 
 Live TV only plays links published by iptv-org. It doesn't host, store or re-stream any video. Whether a channel plays depends on its source; free streams come and go. If a channel is broken, it's best reported to [iptv-org](https://github.com/iptv-org/iptv/issues).
+
+## JioTV
+
+Settings › **JioTV** signs in with **your own** Jio number and an OTP, typed with the remote. JioTV channels in the languages you choose (Tamil and English to start) are added to the library: under a **JioTV** category and in the matching categories (Tamil, News, Movies, …), with JioTV's own guide.
+
+- The TV talks to JioTV directly. Nothing goes through any server of this project, and your sign-in stays on your TV.
+- JioTV only serves Indian **home** internet connections, so it works on your TV at home but not from cloud servers.
+- DRM-protected JioTV channels aren't supported yet; they show a message instead of playing.
+- Use it with your own JioTV access, for personal viewing.
+
+The JioTV integration is a Java port of parts of **[JioTV Go](https://github.com/jiotv-go/jiotv_go)** by Mohammed Rabil and contributors, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Changes: rewritten in Java for Android TV, limited to sign-in, token refresh, channel list, live HLS playback and guide. Live TV isn't affiliated with Jio or JioTV.
 
 ## Install
 

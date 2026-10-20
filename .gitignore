@@ -12,3 +12,6 @@ server/data/
 # Claude Code: share the project skills, keep local settings private
 .claude/*
 !.claude/skills/
+
+# Personal JioTV Go test setup (names the private JioTV subdomain)
+deploy/jiotv/

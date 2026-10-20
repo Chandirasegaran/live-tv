@@ -43,6 +43,10 @@ final class Repo {
     private static Map<String, Channel> byKey = Collections.emptyMap();
     private static List<String> categories = Collections.emptyList();
     private static boolean loading;
+    // The two sources, combined by publish(): JioTV first, then iptv-org.
+    private static final Object SOURCES = new Object();
+    private static List<Channel> iptvList = Collections.emptyList();
+    private static List<Channel> jioList = Collections.emptyList();
     private static Runnable listener;
 
     private Repo() {}
@@ -98,10 +102,19 @@ final class Repo {
         loading = true;
         Context app = context.getApplicationContext();
         File cache = new File(app.getFilesDir(), "playlist.m3u");
+        File jioCache = new File(app.getFilesDir(), "jio.m3u");
         Net.IO.execute(() -> {
             if (all.isEmpty()) {
+                List<Channel> jio = Collections.emptyList();
+                if (Jio.loggedIn() && jioCache.exists()) {
+                    try (InputStream in = new FileInputStream(jioCache)) {
+                        jio = parse(in, null);
+                    } catch (IOException e) {
+                        Log.w(TAG, "local JioTV list", e);
+                    }
+                }
                 try (InputStream in = cache.exists() ? new FileInputStream(cache) : app.getAssets().open("channels.m3u")) {
-                    publish(parse(in, null));
+                    setSources(parse(in, null), jio);
                 } catch (IOException e) {
                     Log.w(TAG, "local playlist", e);
                 }
@@ -111,9 +124,13 @@ final class Repo {
                 List<Channel> fresh = fetch();
                 if (fresh != null) {
                     save(fresh, cache);
-                    publish(fresh);
+                    setSources(fresh, null);
                     ok = true;
                 }
+            }
+            if (Jio.loggedIn() && (force || !jioCache.exists()
+                    || System.currentTimeMillis() - jioCache.lastModified() > MAX_AGE_MS)) {
+                fetchJio(jioCache);
             }
             boolean result = ok;
             MAIN.post(() -> {
@@ -121,6 +138,53 @@ final class Repo {
                 if (done != null) done.done(result);
             });
         });
+    }
+
+    /** Fetches the JioTV channels now (after sign-in or a language change); {@code done} gets the count, or -1. */
+    static void reloadJio(Context context, Epg.Callback<Integer> done) {
+        File jioCache = new File(context.getApplicationContext().getFilesDir(), "jio.m3u");
+        Net.IO.execute(() -> {
+            int n = fetchJio(jioCache);
+            MAIN.post(() -> done.done(n));
+        });
+    }
+
+    /** Removes JioTV channels from the library (after signing out). */
+    static void clearJio(Context context) {
+        new File(context.getApplicationContext().getFilesDir(), "jio.m3u").delete();
+        Net.IO.execute(() -> setSources(null, Collections.emptyList()));
+    }
+
+    /** Number of JioTV channels currently in the library. */
+    static int jioCount() {
+        synchronized (SOURCES) {
+            return jioList.size();
+        }
+    }
+
+    private static int fetchJio(File jioCache) {
+        try {
+            List<Channel> jio = Jio.fetchChannels();
+            save(jio, jioCache);
+            setSources(null, jio);
+            return jio.size();
+        } catch (IOException e) {
+            Log.w(TAG, "JioTV channels unavailable", e);
+            return -1;
+        }
+    }
+
+    /** Replaces one or both sources (null keeps the current one) and republishes. */
+    private static void setSources(List<Channel> iptv, List<Channel> jio) {
+        List<Channel> combined;
+        synchronized (SOURCES) {
+            if (iptv != null) iptvList = iptv;
+            if (jio != null) jioList = jio;
+            combined = new ArrayList<>(jioList.size() + iptvList.size());
+            combined.addAll(jioList);
+            combined.addAll(iptvList);
+        }
+        publish(combined);
     }
 
     /** iptv-org Tamil first, then India; duplicates (by tvg-id) keep their Tamil entry. */
@@ -177,12 +241,14 @@ final class Repo {
         }
         List<String> groups = new ArrayList<>(counts.keySet());
         groups.remove(TAMIL);
+        groups.remove(Jio.GROUP);
         groups.remove(OTHER);
         Collections.sort(groups, (a, b) -> counts.get(b) - counts.get(a));
         List<String> cats = new ArrayList<>();
         cats.add(FAVOURITES);
         cats.add(ALL);
         if (counts.containsKey(TAMIL)) cats.add(TAMIL);
+        if (counts.containsKey(Jio.GROUP)) cats.add(Jio.GROUP);
         cats.addAll(groups);
         if (counts.containsKey(OTHER)) cats.add(OTHER);
 
