@@ -4,7 +4,7 @@
     <item>
         <shape>
             <corners android:radius="24dp" />
-            <solid android:color="#FF000000" />
+            <solid android:color="#FF3A3A3C" />
         </shape>
     </item>
     <item android:drawable="@drawable/ic_glyph" />
