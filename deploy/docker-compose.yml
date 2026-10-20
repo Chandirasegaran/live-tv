@@ -1,0 +1,32 @@
+# Live TV guide (EPG) server, run on the Oracle box behind Caddy.
+#   docker compose pull && docker compose up -d
+# Caddyfile:
+#   tvepg.chandirasegaran.dpdns.org {
+#       reverse_proxy localhost:5001
+#   }
+services:
+  livetv-epg:
+    image: chandirasegaran/livetv-epg:latest
+    container_name: livetv-epg
+    restart: unless-stopped
+    ports:
+      # Only reachable from this machine; Caddy terminates TLS and proxies in.
+      # If Caddy itself runs in Docker, drop this and put both on one network,
+      # then proxy to livetv-epg:5001 instead.
+      - "127.0.0.1:5001:5001"
+    environment:
+      PORT: "5001"
+      DATA_DIR: /data
+      EPG_INTERVAL_H: "24"
+      RUST_LOG: info
+    volumes:
+      - livetv-epg-data:/data # guide snapshot, so a restart serves immediately
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  livetv-epg-data:

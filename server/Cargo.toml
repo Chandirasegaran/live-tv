@@ -1,0 +1,25 @@
+[package]
+name = "livetv-server"
+version = "0.1.0"
+edition = "2021"
+description = "Merged, health-checked IPTV playlist and compact EPG JSON for the Live TV app"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "net", "sync", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "gzip", "json", "http2"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["compression-gzip"] }
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
+async-trait = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

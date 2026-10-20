@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deep purple, two tones: violet top-left to dark plum bottom-right. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="315"
+        android:startColor="#FF7C3AED"
+        android:endColor="#FF2E0B5E"
+        android:type="linear" />
+</shape>

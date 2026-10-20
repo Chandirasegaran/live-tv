@@ -1,0 +1,26 @@
+services:
+  livetv:
+    build: .
+    image: livetv-server:latest
+    container_name: livetv-server
+    restart: unless-stopped
+    ports:
+      # Plain HTTP; Caddy in front handles TLS.
+      # Use "127.0.0.1:5001:5001" if Caddy runs on the same host.
+      - "5001:5001"
+    environment:
+      PORT: "5001"
+      DATA_DIR: /data
+      EPG_INTERVAL_H: "24"
+      RUST_LOG: info
+    volumes:
+      - livetv-data:/data
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  livetv-data:
