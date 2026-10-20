@@ -62,6 +62,7 @@ public class PlayerActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private FrameLayout root;
     private SurfaceView surface;
+    private View blank; // black cover while a channel tunes, so the old frame doesn't linger
     private View info;
     private TextView infoNumber, infoName, infoNow, infoTime, infoNext, infoAudio, status, hint, digits;
     private ImageView infoStar;
@@ -94,6 +95,9 @@ public class PlayerActivity extends Activity {
         root = new FrameLayout(this);
         surface = new SurfaceView(this);
         root.addView(surface, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        blank = new View(this);
+        blank.setBackgroundColor(0xFF000000);
+        root.addView(blank, new FrameLayout.LayoutParams(-1, -1));
         root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> fitSurface());
         buildStatus();
         buildInfo();
@@ -186,6 +190,10 @@ public class PlayerActivity extends Activity {
                 showStatus(Strings.UNAVAILABLE, Strings.CHANGE_HINT);
             }
 
+            @Override public void onRenderedFirstFrame() {
+                blank.setVisibility(View.GONE);
+            }
+
             @Override public void onVideoSizeChanged(VideoSize size) {
                 videoSize = size;
                 fitSurface();
@@ -251,6 +259,7 @@ public class PlayerActivity extends Activity {
                     .clearOverridesOfType(C.TRACK_TYPE_AUDIO).build());
         }
         videoSize = VideoSize.UNKNOWN;
+        blank.setVisibility(View.VISIBLE);
         showInfo();
         handler.removeCallbacks(startPlayback);
         if (debounce) handler.postDelayed(startPlayback, ZAP_DELAY_MS);
