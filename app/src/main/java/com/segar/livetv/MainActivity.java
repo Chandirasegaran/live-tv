@@ -508,7 +508,7 @@ public class MainActivity extends Activity {
         title.setText(Strings.SETTINGS);
         panel.addView(title, Ui.at(0, 0, -1, px(52)));
 
-        String[] titles = {Strings.QUALITY, Strings.ON_START, Strings.UP_BUTTON, Strings.INFO_BAR,
+        String[] titles = {Strings.QUALITY, Strings.ASPECT, Strings.ON_START, Strings.UP_BUTTON, Strings.INFO_BAR,
                 Strings.REFRESH_CHANNELS, Strings.REFRESH_GUIDE, Strings.CLEAR_FAVS, Strings.UPDATES, Strings.ABOUT};
         boolean[] armed = {false}; // Clear favourites needs a second OK
         Updater.Release[] update = {null}; // found by the first OK on "Check for updates"
@@ -516,6 +516,17 @@ public class MainActivity extends Activity {
                 new Setting() {
                     public String value() { return Prefs.highestQuality() ? Strings.QUALITY_HIGH : Strings.QUALITY_AUTO; }
                     public void ok(TextView v) { Prefs.setHighestQuality(!Prefs.highestQuality()); v.setText(value()); }
+                },
+                new Setting() {
+                    public String value() {
+                        int m = Prefs.aspectMode();
+                        return m == Prefs.ASPECT_ZOOM ? Strings.ASPECT_ZOOM
+                                : m == Prefs.ASPECT_ORIGINAL ? Strings.ASPECT_ORIGINAL : Strings.ASPECT_16_9;
+                    }
+                    public void ok(TextView v) {
+                        Prefs.setAspectMode((Prefs.aspectMode() + 1) % 3);
+                        v.setText(value());
+                    }
                 },
                 new Setting() {
                     public String value() { return Prefs.resumeLast() ? Strings.START_LAST : Strings.START_GRID; }

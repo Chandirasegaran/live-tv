@@ -60,6 +60,12 @@ final class Prefs {
     static int infoSeconds() { return sp.getInt("infoSecs", 5); }
     static void setInfoSeconds(int s) { sp.edit().putInt("infoSecs", s).apply(); }
 
+    static final int ASPECT_16_9 = 0, ASPECT_ORIGINAL = 1, ASPECT_ZOOM = 2;
+
+    /** How video fills the screen: 16:9 (default), the stream's own shape, or zoomed to fill. */
+    static int aspectMode() { return sp.getInt("aspect", ASPECT_16_9); }
+    static void setAspectMode(int mode) { sp.edit().putInt("aspect", mode).apply(); }
+
     static void clearFavs() {
         favs.clear();
         sp.edit().remove("favs").apply();

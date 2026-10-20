@@ -25,6 +25,10 @@ final class Strings {
     static final String QUALITY = "Video quality";
     static final String QUALITY_HIGH = "Highest";
     static final String QUALITY_AUTO = "Auto (adapts to your connection)";
+    static final String ASPECT = "Aspect ratio";
+    static final String ASPECT_16_9 = "16:9";
+    static final String ASPECT_ORIGINAL = "Original";
+    static final String ASPECT_ZOOM = "Zoom (fills the screen, trims edges)";
     static final String ON_START = "On start";
     static final String START_LAST = "Resume last channel";
     static final String START_GRID = "Show channel grid";

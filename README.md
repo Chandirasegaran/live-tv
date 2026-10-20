@@ -6,7 +6,8 @@ A small, fast Android TV app for watching free Indian and Tamil live TV channels
 - **Remote-first player:** channel up/down, number entry, an info bar with what's on now and next, a channel list (OK), the day's guide (→), and audio-track switching (←) on channels with several languages.
 - **Favourites and search.**
 - **TV guide (EPG)** for about 460 channels, from a small self-hosted server (see [`server/`](server/)).
-- **Settings:** video quality (highest by default), start-up behaviour, up-button direction, info bar time, refresh channels or guide, and **Check for updates** from this repository's GitHub Releases.
+- **Plays MP2 audio everywhere:** many satellite-sourced sports channels use MP2 (MPEG-1 Layer II) audio, which a lot of TVs can't decode. A small built-in decoder takes over when the TV has none.
+- **Settings:** video quality (highest by default), aspect ratio (16:9 by default, Original or Zoom), start-up behaviour, up-button direction, info bar time, refresh channels or guide, and **Check for updates** from this repository's GitHub Releases.
 - **Light:** about 680 KB. No AndroidX, Kotlin or Compose; plain Java views drawn in code, plus Media3 ExoPlayer for playback.
 
 ## Thanks to iptv-org
@@ -16,6 +17,8 @@ All channels come from the community-maintained **[iptv-org/iptv](https://github
 - [`languages/tam.m3u`](https://iptv-org.github.io/iptv/languages/tam.m3u) (Tamil) and [`countries/in.m3u`](https://iptv-org.github.io/iptv/countries/in.m3u) (India), listed in [PLAYLISTS.md](https://github.com/iptv-org/iptv/blob/master/PLAYLISTS.md).
 - The [iptv-org API](https://github.com/iptv-org/api) `guides.json`, which maps channels to guide sources.
 - The site configs in [iptv-org/epg](https://github.com/iptv-org/epg), which the guide server's Rust scrapers are ported from.
+
+The built-in MP2 audio decoder is ported from [pl_mpeg](https://github.com/phoboslab/pl_mpeg) by Dominic Szablewski (MIT), itself based on [kjmp2](https://keyj.emphy.de/kjmp2/) by Martin J. Fiedler.
 
 Live TV only plays links published by iptv-org. It doesn't host, store or re-stream any video. Whether a channel plays depends on its source; free streams come and go. If a channel is broken, it's best reported to [iptv-org](https://github.com/iptv-org/iptv/issues).
 

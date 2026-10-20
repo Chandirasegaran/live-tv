@@ -37,6 +37,7 @@ import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 
@@ -160,7 +161,7 @@ public class PlayerActivity extends Activity {
             params.setForceHighestSupportedBitrate(true).clearViewportSizeConstraints();
         }
         selector.setParameters(params);
-        player = new ExoPlayer.Builder(this, new DefaultRenderersFactory(this).setEnableDecoderFallback(true))
+        player = new ExoPlayer.Builder(this, new RenderersFactory(this).setEnableDecoderFallback(true))
                 .setTrackSelector(selector)
                 .setLoadControl(load)
                 .build();
@@ -220,8 +221,16 @@ public class PlayerActivity extends Activity {
             http.setDefaultRequestProperties(headers);
         }
         MediaItem.Builder item = new MediaItem.Builder().setUri(c.url);
-        if (c.url.contains(".m3u8")) item.setMimeType(MimeTypes.APPLICATION_M3U8);
-        player.setMediaSource(new DefaultMediaSourceFactory(http).createMediaSource(item.build()));
+        if (c.url.contains(".m3u8")) {
+            item.setMimeType(MimeTypes.APPLICATION_M3U8);
+            // Read the real tracks from the first segment instead of trusting the playlist's
+            // CODECS label: some channels list only the video codec, which hides their audio.
+            player.setMediaSource(new HlsMediaSource.Factory(http)
+                    .setAllowChunklessPreparation(false)
+                    .createMediaSource(item.build()));
+        } else {
+            player.setMediaSource(new DefaultMediaSourceFactory(http).createMediaSource(item.build()));
+        }
         player.prepare();
         player.setPlayWhenReady(true);
     }
@@ -252,16 +261,43 @@ public class PlayerActivity extends Activity {
         int w = root.getWidth(), h = root.getHeight();
         if (w == 0 || h == 0) return;
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) surface.getLayoutParams();
+        // Settings › Aspect ratio: 16:9 (default), the stream's own shape, or zoom to fill.
+        int mode = Prefs.aspectMode();
+        boolean known = videoSize.width > 0 && videoSize.height > 0;
+        float aspect = mode == Prefs.ASPECT_16_9 || !known
+                ? 16f / 9f
+                : videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height;
+        boolean wider = aspect > w / (float) h;
         int sw = w, sh = h;
-        if (videoSize.width > 0 && videoSize.height > 0) {
-            float aspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height;
-            if (aspect > w / (float) h) sh = Math.round(w / aspect);
-            else sw = Math.round(h * aspect);
+        if (mode == Prefs.ASPECT_ZOOM) {
+            if (wider) sw = Math.round(h * aspect); // cover the screen; the root clips the edges
+            else sh = Math.round(w / aspect);
+        } else if (wider) {
+            sh = Math.round(w / aspect);
+        } else {
+            sw = Math.round(h * aspect);
         }
         if (lp.width != sw || lp.height != sh) {
             lp.width = sw;
             lp.height = sh;
             surface.setLayoutParams(lp);
+        }
+    }
+
+    /** Platform renderers first; the Java MP2 decoder only when the TV has no MP2 decoder. */
+    private static final class RenderersFactory extends DefaultRenderersFactory {
+        RenderersFactory(android.content.Context context) {
+            super(context);
+        }
+
+        @Override
+        protected void buildAudioRenderers(android.content.Context context, int extensionRendererMode,
+                androidx.media3.exoplayer.mediacodec.MediaCodecSelector selector, boolean decoderFallback,
+                androidx.media3.exoplayer.audio.AudioSink sink, Handler handler,
+                androidx.media3.exoplayer.audio.AudioRendererEventListener listener,
+                java.util.ArrayList<androidx.media3.exoplayer.Renderer> out) {
+            super.buildAudioRenderers(context, extensionRendererMode, selector, decoderFallback, sink, handler, listener, out);
+            out.add(new Mp2Renderer(handler, listener, sink));
         }
     }
 
