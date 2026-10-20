@@ -9,5 +9,6 @@ local.properties
 server/target/
 server/data/
 
-# Local Claude Code tooling (skills are third-party copies)
-.claude/
+# Claude Code: share the project skills, keep local settings private
+.claude/*
+!.claude/skills/
