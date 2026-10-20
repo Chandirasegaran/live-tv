@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- White line TV (cabinet, screen, antenna, splayed legs), inside the 66dp safe zone of the
-     108dp adaptive-icon canvas. White only, so it doubles as the monochrome layer. -->
+<!-- Bold white TV: rounded screen, V antenna, splayed legs, round ends. Inside the 66dp safe
+     zone of the 108dp adaptive-icon canvas. White only, so it doubles as the monochrome layer. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M29.8,35 H78.2 A4,4 0 0 1 82.2,39 V77.5 A4,4 0 0 1 78.2,81.5 H29.8 A4,4 0 0 1 25.8,77.5 V39 A4,4 0 0 1 29.8,35 Z M36.7,41.3 H71.6 A4,4 0 0 1 75.6,45.3 V71.5 A4,4 0 0 1 71.6,75.5 H36.7 A4,4 0 0 1 32.7,71.5 V45.3 A4,4 0 0 1 36.7,41.3 Z M50.1,21.8 L63.6,35 L76.8,21.8 M34.8,81.8 L32.4,86 M72,81.8 L75.6,86"
-        android:strokeWidth="2.6"
+        android:pathData="M32.1,38.1 H75.9 A7.5,7.5 0 0 1 83.4,45.6 V68.5 A7.5,7.5 0 0 1 75.9,76 H32.1 A7.5,7.5 0 0 1 24.6,68.5 V45.6 A7.5,7.5 0 0 1 32.1,38.1 Z M38.4,24.8 L51.6,38.1 M69.4,24.8 L56.1,38.1 M37.6,78.6 L32.7,83.4 M70.4,78.6 L75.3,83.4"
+        android:strokeWidth="5.1"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
