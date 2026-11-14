@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.segar.livetv"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.segar.livetv"
@@ -46,6 +46,6 @@ android {
 
 dependencies {
     // The one library allowed by docs/PLAN.md: ExoPlayer core + HLS. No media3-ui.
-    implementation("androidx.media3:media3-exoplayer:1.11.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
 }

@@ -2,6 +2,18 @@
 
 A small, fast Android TV app for watching free Indian and Tamil live TV channels, made for low-end TVs (built and tested for a Redmi Smart TV 32: 1 GB RAM, Android TV 11).
 
+## Hindi / Punjabi / English fork (this branch)
+
+This fork (`hindi-punjabi-english` branch, for Xiaomi MiTV AXSO2, Android 9, 2 GB RAM) changes the upstream for viewers who want Hindi, Punjabi and English channels only:
+
+- **All-stream failover:** duplicates of a channel id in the playlist are kept as fallback links instead of being discarded (was: only the first link was kept). When playback fails, the next link is tried automatically, so many more channels play before showing "unavailable".
+- **Language filter:** only channels listed in the iptv-org `hin`, `pan` and `eng` language playlists are shown (falls back to the full India list if those are unreachable).
+- **Other states' regional channels are hidden** (Rajasthan, Himachal, UP, MP, Bihar, Haryana and other state-named channels, in both Latin and Devanagari script). Punjab's regional channels stay.
+- **Auto-hide learning:** a channel that fails every link it has twice in a row hides itself from the grid; a playlist refresh gives every channel a fresh chance.
+- Build toolchain pinned to Gradle 8.9 / AGP 8.5.2 / media3 1.4.1 / compileSdk 34 so it builds on older build environments.
+
+The Tamil category and Tamil playlist source were removed for this fork. Everything else (JioTV, EPG, MP2 decoder, player UI) is unchanged from upstream.
+
 - **Channel grid and list:** 16:9 logo tiles or numbered rows, with categories (Favourites, Tamil, News, Movies, Kids, …).
 - **Remote-first player:** channel up/down, number entry, an info bar with what's on now and next, a channel list (OK), the day's guide (→), and audio-track switching (←) on channels with several languages.
 - **Favourites and search.**

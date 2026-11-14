@@ -7,14 +7,15 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Streaming M3U parser for iptv-org style playlists. */
 final class M3u {
     private M3u() {}
 
-    /** Appends channels from {@code in} to {@code out}, skipping keys already in {@code seen}. */
-    static void parse(InputStream in, List<Channel> out, Set<String> seen, String extraGroup) throws IOException {
+    /** Appends channels from {@code in} to {@code out}; duplicates by key become fallback links on the first one. */
+    static void parse(InputStream in, List<Channel> out, Map<String, Channel> seen, String extraGroup) throws IOException {
         BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8), 16 * 1024);
         String line, extinf = null, referrer = null, ua = null;
         while ((line = r.readLine()) != null) {
@@ -30,8 +31,30 @@ final class M3u {
             } else if (line.charAt(0) != '#' && extinf != null) {
                 Channel c = build(extinf, line, referrer, ua, extraGroup);
                 extinf = null;
-                if (c != null && seen.add(c.key)) out.add(c);
+                if (c != null) {
+                    Channel first = seen.get(c.key);
+                    if (first == null) {
+                        seen.put(c.key, c);
+                        out.add(c);
+                    } else {
+                        first.addAlternate(c); // same channel, another stream: keep it as a fallback link
+                    }
+                }
             }
+        }
+    }
+
+    /** Adds every channel id (tvg-id, without its @feed suffix) found in the playlist to {@code out}. */
+    static void collectIds(InputStream in, Set<String> out) throws IOException {
+        BufferedReader r = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8), 16 * 1024);
+        String line;
+        while ((line = r.readLine()) != null) {
+            line = line.trim();
+            if (!line.startsWith("#EXTINF")) continue;
+            String id = attr(line, "tvg-id");
+            if (id == null || id.isEmpty()) continue;
+            int at = id.indexOf('@');
+            out.add(at > 0 ? id.substring(0, at) : id);
         }
     }
 
