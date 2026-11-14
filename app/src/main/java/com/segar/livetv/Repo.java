@@ -222,15 +222,17 @@ final class Repo {
             Map<String, Channel> seen = new HashMap<>();
             M3u.parse(new ByteArrayInputStream(Net.bytes(IPTV_ORG[0][0], 8 << 20)), list, seen, null);
             if (list.size() <= 20) return null;
-            // No language data at all: show India as-is rather than an empty TV.
-            if (kept.isEmpty()) return list;
+            // No language data: keep the cache/snapshot rather than silently unfiltering — the user
+            // asked for Hindi/Punjabi/English only, so an empty-ish TV beats the full India list.
+            if (kept.isEmpty()) return null;
             List<Channel> out = new ArrayList<>();
             for (Channel c : list) {
                 if (c.key.equals(c.url) || !kept.contains(c.key)) continue;
                 if (stateBlocked(c.name + " " + c.key)) continue;
                 out.add(c);
             }
-            return out.size() > 20 ? out : list;
+            // Strict even when small: a short filtered list is correct; the unfiltered list is not.
+            return out.isEmpty() ? null : out;
         } catch (IOException e) {
             Log.w(TAG, "iptv-org playlist unavailable", e);
         }

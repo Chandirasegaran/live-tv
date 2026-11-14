@@ -85,6 +85,8 @@ public class PlayerActivity extends Activity {
     /** The playing JioTV channel's stream token, sent as the __hdnea__ cookie; renewed in place. */
     private volatile String jioToken;
     private boolean jioRetried;
+    /** BEHIND_LIVE_WINDOW gets one in-place retry; more means the link is really dead. */
+    private boolean liveWindowRetried;
     private final Runnable renewJio = this::renewJioToken;
 
     private final Runnable hideInfo = () -> info.setVisibility(View.GONE);
@@ -129,8 +131,9 @@ public class PlayerActivity extends Activity {
         Channel c = Repo.get(key);
         int i = c == null ? -1 : channels.indexOf(c);
         if (i < 0) {
-            channels = Repo.all();
-            i = c == null ? 0 : channels.indexOf(c);
+            // Stay on the filtered list: a hidden (dead) channel must not be resumed from last().
+            channels = Repo.filter(Repo.ALL);
+            i = channels.indexOf(c);
         }
         if (channels.isEmpty()) {
             finish();
@@ -187,13 +190,23 @@ public class PlayerActivity extends Activity {
                     handler.postDelayed(showTuning, 700);
                 } else {
                     handler.removeCallbacks(showTuning);
-                    if (s == Player.STATE_READY) hideStatus();
+                    if (s == Player.STATE_READY) {
+                    hideStatus();
+                    // It plays: its old failure isn't "consecutive" anymore, and the one-shot
+                    // live-window/JioTV retries are armed again for later hiccups.
+                    if (index >= 0) Prefs.clearFailure(channels.get(index).key);
+                    jioRetried = false;
+                    liveWindowRetried = false;
+                }
                 }
             }
 
             @Override public void onPlayerError(PlaybackException e) {
                 handler.removeCallbacks(showTuning);
-                if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW && !liveWindowRetried) {
+                    // One in-place retry for a sliding live window; if it recurs, treat the link as
+                    // dead and fall through to the next variant / failover below.
+                    liveWindowRetried = true;
                     player.seekToDefaultPosition();
                     player.prepare();
                     return;
@@ -257,6 +270,7 @@ public class PlayerActivity extends Activity {
         if (player == null || index < 0) return;
         Channel c = channels.get(index).variant(attempt);
         if (c == null) {
+            if (index >= 0) Prefs.markFailed(channels.get(index).key); // defensive: counts as all-links failure
             showStatus(Strings.UNAVAILABLE, Strings.CHANGE_HINT);
             return;
         }
@@ -301,6 +315,7 @@ public class PlayerActivity extends Activity {
                 if (id != playId || player == null) return; // zapped away meanwhile
                 if (s.error != null) {
                     handler.removeCallbacks(showTuning);
+                    if (index >= 0) Prefs.markFailed(channels.get(index).key); // an all-links failure too
                     showStatus(s.error, Strings.CHANGE_HINT);
                     return;
                 }
@@ -361,6 +376,7 @@ public class PlayerActivity extends Activity {
         index = i;
         Prefs.setLast(channels.get(i).key);
         jioRetried = false;
+        liveWindowRetried = false;
         attempt = 0;
         if (Jio.isJio(channels.get(i))) Epg.loadJio(channels.get(i), this::updateInfo);
         hideStatus();

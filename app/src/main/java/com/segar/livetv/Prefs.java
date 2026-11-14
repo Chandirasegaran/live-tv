@@ -100,6 +100,12 @@ final class Prefs {
         return now >= FAIL_LIMIT;
     }
 
+    /** The channel played fine, so its old failure doesn't count toward "consecutive" anymore. */
+    static void clearFailure(String key) {
+        if (fails == null || fails.remove(key) == null) return;
+        sp.edit().remove("fail_" + key).apply();
+    }
+
     /** A fresh playlist arrived and streams may have been fixed: give every channel a new chance. */
     static void clearFailures() {
         if (sp == null || fails.isEmpty()) return;
