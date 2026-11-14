@@ -35,8 +35,23 @@ final class Repo {
     private static final String TAG = "Repo";
     private static final long MAX_AGE_MS = 6 * 60 * 60 * 1000L;
     private static final String[][] IPTV_ORG = {
-            {"https://iptv-org.github.io/iptv/languages/tam.m3u", TAMIL},
             {"https://iptv-org.github.io/iptv/countries/in.m3u", null}};
+
+    /** Languages kept: Hindi, Punjabi and English. The language playlists say which channel ids belong to
+     *  each; the India playlist supplies the streams, filtered down to those ids, dropping the rest. */
+    private static final String[] LANGUAGES = {
+            "https://iptv-org.github.io/iptv/languages/hin.m3u",
+            "https://iptv-org.github.io/iptv/languages/pan.m3u",
+            "https://iptv-org.github.io/iptv/languages/eng.m3u"};
+
+    /** Other states' regional channels (they broadcast in Hindi, so the language filter can't catch them).
+     *  Punjab's stay, everything else state-named goes. Both scripts: many channels name themselves in
+     *  Devanagari ("Zee राजस्थान"). */
+    private static final String[] BLOCKED_STATES = {
+            "rajasthan", "himachal", "uttar pradesh", "up/uk", "up/bihar", "madhya pradesh", "mp/cg",
+            "bihar", "jharkhand", "chhattisgarh", "haryana", "uttarakhand", "bhojpuri", "purvanchal",
+            "राजस्थान", "हिमाचल", "उत्तर प्रदेश", "उत्तराखंड", "उत्तराखण्ड", "मध्य प्रदेश", "छत्तीसगढ़",
+            "छत्तीसगढ", "बिहार", "झारखंड", "झारखण्ड", "हरियाणा", "भोजपुरी"};
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static List<Channel> all = Collections.emptyList();
@@ -59,7 +74,11 @@ final class Repo {
     static void setListener(Runnable r) { listener = r; }
 
     static List<Channel> filter(String cat) {
-        if (ALL.equals(cat)) return all;
+        if (ALL.equals(cat)) {
+            List<Channel> out = new ArrayList<>(all.size());
+            for (Channel c : all) if (!Prefs.isDead(c.key)) out.add(c);
+            return out;
+        }
         List<Channel> out = new ArrayList<>();
         if (FAVOURITES.equals(cat)) {
             for (String k : Prefs.favs()) {
@@ -68,7 +87,7 @@ final class Repo {
             }
             return out;
         }
-        for (Channel c : all) if (c.inGroup(cat)) out.add(c);
+        for (Channel c : all) if (c.inGroup(cat) && !Prefs.isDead(c.key)) out.add(c);
         return out;
     }
 
@@ -135,6 +154,7 @@ final class Repo {
             boolean result = ok;
             MAIN.post(() -> {
                 loading = false;
+                if (result) Prefs.clearFailures(); // new links may work where the old ones died
                 if (done != null) done.done(result);
             });
         });
@@ -190,21 +210,46 @@ final class Repo {
     /** iptv-org Tamil first, then India; duplicates (by tvg-id) keep their Tamil entry. */
     private static List<Channel> fetch() {
         try {
-            List<Channel> list = new ArrayList<>();
-            Set<String> seen = new HashSet<>();
-            for (String[] src : IPTV_ORG) {
-                M3u.parse(new ByteArrayInputStream(Net.bytes(src[0], 4 << 20)), list, seen, src[1]);
+            Set<String> kept = new HashSet<>();
+            for (String lang : LANGUAGES) {
+                try {
+                    M3u.collectIds(new ByteArrayInputStream(Net.bytes(lang, 16 << 20)), kept);
+                } catch (IOException e) {
+                    Log.w(TAG, "language playlist unavailable: " + lang, e); // the other two still count
+                }
             }
-            if (list.size() > 20) return list;
+            List<Channel> list = new ArrayList<>();
+            Map<String, Channel> seen = new HashMap<>();
+            M3u.parse(new ByteArrayInputStream(Net.bytes(IPTV_ORG[0][0], 8 << 20)), list, seen, null);
+            if (list.size() <= 20) return null;
+            // No language data at all: show India as-is rather than an empty TV.
+            if (kept.isEmpty()) return list;
+            List<Channel> out = new ArrayList<>();
+            for (Channel c : list) {
+                if (c.key.equals(c.url) || !kept.contains(c.key)) continue;
+                if (stateBlocked(c.name + " " + c.key)) continue;
+                out.add(c);
+            }
+            return out.size() > 20 ? out : list;
         } catch (IOException e) {
             Log.w(TAG, "iptv-org playlist unavailable", e);
         }
         return null;
     }
 
+    /** True when the channel name or id names another state's region: "News18 UP/UK", "1st India Rajasthan". */
+    private static boolean stateBlocked(String s) {
+        s = s.toLowerCase(java.util.Locale.ROOT);
+        // Punjab's own regional channels stay: "Zee पंजाब हरियाणा हिमाचल", "PTC Punjabi" etc.
+        if (s.contains("punjab") || s.contains("पंजाब")) return false;
+        for (String k : BLOCKED_STATES) if (s.contains(k)) return true;
+        // Bare state abbreviations at word boundaries: "News18 UP", "India News MP", "News18 CG".
+        return s.matches("(?s).*\\b(up|mp|cg)\\b.*");
+    }
+
     private static List<Channel> parse(InputStream in, String extraGroup) throws IOException {
         List<Channel> list = new ArrayList<>(1024);
-        M3u.parse(in, list, new HashSet<>(), extraGroup);
+        M3u.parse(in, list, new HashMap<>(), extraGroup);
         return list;
     }
 

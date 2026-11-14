@@ -80,6 +80,8 @@ public class PlayerActivity extends Activity {
     private VideoSize videoSize = VideoSize.UNKNOWN;
     /** Bumped on every startPlayback(); async JioTV lookups for an older one are dropped. */
     private int playId;
+    /** Which of the channel's stream links is playing; the next one is tried on a playback error. */
+    private int attempt;
     /** The playing JioTV channel's stream token, sent as the __hdnea__ cookie; renewed in place. */
     private volatile String jioToken;
     private boolean jioRetried;
@@ -209,6 +211,19 @@ public class PlayerActivity extends Activity {
                         return;
                     }
                 }
+                // The stream link is dead: the playlist often lists other links for the same channel, so try
+                // the next one before giving up.
+                if (index >= 0) {
+                    Channel base = channels.get(index);
+                    if (attempt + 1 < base.variants()) {
+                        attempt++;
+                        startPlayback();
+                        return;
+                    }
+                    // Every link failed. Twice in a row and the channel keeps itself out of the grid until
+                    // the next playlist refresh gives it a fresh chance.
+                    Prefs.markFailed(base.key);
+                }
                 showStatus(Strings.UNAVAILABLE, Strings.CHANGE_HINT);
             }
 
@@ -240,7 +255,11 @@ public class PlayerActivity extends Activity {
 
     private void startPlayback() {
         if (player == null || index < 0) return;
-        Channel c = channels.get(index);
+        Channel c = channels.get(index).variant(attempt);
+        if (c == null) {
+            showStatus(Strings.UNAVAILABLE, Strings.CHANGE_HINT);
+            return;
+        }
         int id = ++playId;
         handler.removeCallbacks(renewJio);
         if (Jio.isJio(c)) {
@@ -342,6 +361,7 @@ public class PlayerActivity extends Activity {
         index = i;
         Prefs.setLast(channels.get(i).key);
         jioRetried = false;
+        attempt = 0;
         if (Jio.isJio(channels.get(i))) Epg.loadJio(channels.get(i), this::updateInfo);
         hideStatus();
         handler.removeCallbacks(showTuning);
