@@ -92,6 +92,7 @@ final class Prefs {
 
     /** One more time the channel failed every stream link it had; true when it crossed the limit. */
     static boolean markFailed(String key) {
+        if (fails == null) return false; // Prefs not initialized yet: nothing to count
         Integer n = fails.get(key);
         int now = (n == null ? 0 : n) + 1;
         fails.put(key, now);
